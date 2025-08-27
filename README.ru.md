@@ -2,6 +2,8 @@
 
 # ComfyUI Нода "Nano banana"
 
+![Нода Nano banana](./images/screenshot.png)
+
 Этот репозиторий содержит кастомную ноду "Nano banana" для ComfyUI, предназначенную для продвинутого редактирования изображений с помощью Google Gemini API.
 
 Проект основан на оригинальном репозитории [Visionatrix/ComfyUI-Gemini](https://github.com/Visionatrix/ComfyUI-Gemini).

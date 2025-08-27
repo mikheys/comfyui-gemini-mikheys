@@ -2,6 +2,8 @@
 
 # ComfyUI Nano Banana Node
 
+![Nano banana Node](./images/screenshot.png)
+
 This repository contains a custom node for ComfyUI, "Nano banana", designed for advanced image editing using the Google Gemini API.
 
 This project is based on the original [Visionatrix/ComfyUI-Gemini](https://github.com/Visionatrix/ComfyUI-Gemini) repository.
