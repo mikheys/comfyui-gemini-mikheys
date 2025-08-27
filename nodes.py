@@ -40,17 +40,18 @@ class NanoBananaNode:
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
+    RETURN_TYPES = ("IMAGE", "STRING",)
+    RETURN_NAMES = ("image", "status",)
     FUNCTION = "edit_image"
 
     CATEGORY = "Gemini"
 
     def __init__(self):
         self.image_output: Tensor | None = None
+        self.status_output: str | None = None
 
     def edit_image(self, **kwargs):
-        return (self.image_output,)
+        return (self.image_output, self.status_output,)
 
     def check_lazy_status(
         self,
@@ -72,75 +73,86 @@ class NanoBananaNode:
         **kwargs,
     ):
         self.image_output = None
-        self.text_output = ""
-        if not system_instruction:
-            system_instruction = None
-        
-        contents = [prompt]
-
-        # Process reference images first
-        if reference_image_1 is not None:
-            contents.extend(images_to_pillow(reference_image_1))
-        if reference_image_2 is not None:
-            contents.extend(images_to_pillow(reference_image_2))
-        if reference_image_3 is not None:
-            contents.extend(images_to_pillow(reference_image_3))
-        if reference_image_4 is not None:
-            contents.extend(images_to_pillow(reference_image_4))
-        if reference_image_5 is not None:
-            contents.extend(images_to_pillow(reference_image_5))
-
-        # Process the main image to be edited LAST
-        if image_to_edit is not None:
-            contents.extend(images_to_pillow(image_to_edit))
-
-        if api_key:
-            genai.configure(api_key=api_key, transport="rest")
-        elif "GOOGLE_API_KEY" in os.environ:
-            genai.configure(transport="rest")
-
-        model = genai.GenerativeModel(model, safety_settings=safety_settings, system_instruction=system_instruction)
-
-        retry_config = retry.Retry(
-            predicate=retry.if_exception_type(
-                exceptions.InternalServerError,
-                exceptions.ResourceExhausted,
-                exceptions.ServiceUnavailable,
-            )
-        )
-
-        generation_config = genai.GenerationConfig()
-        if temperature is not None and temperature >= 0:
-            generation_config.temperature = temperature
-        if num_predict is not None and num_predict > 0:
-            generation_config.max_output_tokens = num_predict
+        self.status_output = "Error: Unknown"
+        output_images = []
 
         try:
+            if not system_instruction:
+                system_instruction = None
+            
+            contents = [prompt]
+
+            # Process reference images first
+            ref_images = [reference_image_1, reference_image_2, reference_image_3, reference_image_4, reference_image_5]
+            for img in ref_images:
+                if img is not None:
+                    contents.extend(images_to_pillow(img))
+
+            # Process the main image to be edited LAST
+            if image_to_edit is not None:
+                contents.extend(images_to_pillow(image_to_edit))
+
+            if api_key:
+                genai.configure(api_key=api_key, transport="rest")
+            elif "GOOGLE_API_KEY" in os.environ:
+                genai.configure(transport="rest")
+
+            model_instance = genai.GenerativeModel(model, safety_settings=safety_settings, system_instruction=system_instruction)
+
+            retry_config = retry.Retry(
+                predicate=retry.if_exception_type(
+                    exceptions.InternalServerError,
+                    exceptions.ResourceExhausted,
+                    exceptions.ServiceUnavailable,
+                )
+            )
+
+            generation_config = genai.GenerationConfig()
+            if temperature is not None and temperature >= 0:
+                generation_config.temperature = temperature
+            if num_predict is not None and num_predict > 0:
+                generation_config.max_output_tokens = num_predict
+
             with temporary_env_var("HTTP_PROXY", proxy), temporary_env_var("HTTPS_PROXY", proxy):
-                # Wrap the function with our retry configuration
-                retry_wrapped_generate_content = retry_config(model.generate_content)
-                # Call the wrapped function
+                retry_wrapped_generate_content = retry_config(model_instance.generate_content)
                 response = retry_wrapped_generate_content(contents=contents, generation_config=generation_config)
             
-            output_images = []
-            for part in response.candidates[0].content.parts:
-                if part.inline_data is not None and part.inline_data.data:
-                    try:
-                        image = Image.open(BytesIO(part.inline_data.data))
-                        output_images.append(image)
-                    except Exception as e:
-                        logging.getLogger("ComfyUI-Gemini").error(f"Failed to identify image from response part: {e}")
-                        logging.getLogger("ComfyUI-Gemini").error(f"Response part data: {part.inline_data.data}")
-            
-            if output_images:
-                self.image_output = pillow_to_tensor(output_images)
+            if not response.candidates:
+                self.status_output = "Error: Prompt or image was blocked by safety filters."
+                logging.warning(self.status_output)
+            else:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data is not None and part.inline_data.data:
+                        try:
+                            image = Image.open(BytesIO(part.inline_data.data))
+                            output_images.append(image)
+                        except Exception as e:
+                            log_msg = f"Could not decode image from API response: {e}"
+                            logging.warning(log_msg)
+                            self.status_output = f"Error: {log_msg}"
 
-        except Exception:
-            if error_fallback_value is None:
-                logging.getLogger("ComfyUI-Gemini").debug("ComfyUI-Gemini: exception occurred:", exc_info=True)
-                return (None,)
-            if error_fallback_value == "":
-                raise
+                if output_images:
+                    self.status_output = "Complete"
+                else:
+                    # This case happens if the response had candidates but no valid image data
+                    if self.status_output.startswith("Error:"):
+                        pass # Keep the more specific error
+                    else:
+                        self.status_output = "Error: No image data in API response."
+
+        except Exception as e:
+            self.status_output = f"Error: {e}"
+            logging.error(f"An exception occurred in NanoBananaNode: {e}", exc_info=True)
+
+        # Fallback to a black image if there was any issue
+        if not output_images:
+            width, height = 512, 512 # Default size
+            if image_to_edit is not None:
+                height, width = image_to_edit.shape[1], image_to_edit.shape[2]
+            black_image = Image.new('RGB', (width, height), (0, 0, 0))
+            output_images.append(black_image)
+        
+        self.image_output = pillow_to_tensor(output_images)
         return []
 
 
