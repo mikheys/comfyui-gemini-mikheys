@@ -21,17 +21,7 @@ class NanoBananaNode:
             "required": {
                 "prompt": ("STRING", {"default": "On this image, please change the color of the walls from mint-green to a rich red, keeping the rest of the scene unchanged.", "multiline": True}),
                 "safety_settings": (["BLOCK_NONE", "BLOCK_ONLY_HIGH", "BLOCK_MEDIUM_AND_ABOVE"],),
-                "model": (
-                    [
-                        "gemini-2.5-flash-image-preview",
-                        "gemma-3-12b-it",
-                        "gemma-3-27b-it",
-                        "gemini-2.0-flash-lite-001",
-                        "gemini-2.0-flash-001",
-                        "gemini-2.5-flash",
-                        "gemini-2.5-pro",
-                    ],
-                ),
+                "model": (["gemini-2.5-flash-image-preview"],),
             },
             "optional": {
                 "api_key": ("STRING", {}),
