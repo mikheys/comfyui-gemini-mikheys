@@ -19,3 +19,6 @@ venv/
 
 # OS-specific
 .DS_Store
+
+# Context file for AI assistants
+GEMINI_CONTEXT.md
