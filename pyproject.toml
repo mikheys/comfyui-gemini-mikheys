@@ -1,0 +1,57 @@
+[project]
+name = "comfyui-gemini"
+version = "1.1.2"
+description = "Nodes for Google Gemini API, focusing on backward compatibility and stability within ComfyUI."
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [ "google-generativeai>=0.8.5" ]
+urls.Changelog = "https://github.com/Visionatrix/ComfyUI-Gemini/blob/main/CHANGELOG.md"
+urls.Repository = "https://github.com/Visionatrix/ComfyUI-Gemini"
+urls.Source = "https://github.com/Visionatrix/ComfyUI-Gemini"
+
+[tool.black]
+line-length = 120
+preview = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+lint.select = [
+  "A",
+  "B",
+  "C",
+  "E",
+  "F",
+  "G",
+  "I",
+  "PIE",
+  "Q",
+  "RET",
+  "RUF",
+  "S",
+  "SIM",
+  "UP",
+  "W",
+]
+lint.extend-ignore = [
+  "I001",
+  "RUF100",
+  "S311",
+  "S603",
+]
+lint.mccabe.max-complexity = 20
+
+[tool.isort]
+profile = "black"
+
+[tool.comfy]
+PublisherId = "visionatrix"
+DisplayName = "ComfyUI-Gemini"
+Icon = "https://raw.githubusercontent.com/Visionatrix/VixFlowsDocs/main/screenshots/logo_org_800x800.png"
