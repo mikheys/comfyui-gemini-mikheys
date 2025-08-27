@@ -124,7 +124,7 @@ class NanoBananaNode:
             
             output_images = []
             for part in response.candidates[0].content.parts:
-                if part.inline_data is not None:
+                if part.inline_data is not None and part.inline_data.data:
                     try:
                         image = Image.open(BytesIO(part.inline_data.data))
                         output_images.append(image)
