@@ -3,7 +3,7 @@ import os
 import random
 from io import BytesIO
 
-import google.generativeai as genai
+from google import genai
 from google.api_core import exceptions, retry
 from PIL import Image
 from torch import Tensor
@@ -20,8 +20,9 @@ class NanoBananaNode:
         return {
             "required": {
                 "prompt": ("STRING", {"default": "", "multiline": True}),
-                "safety_settings": (["BLOCK_NONE", "BLOCK_ONLY_HIGH", "BLOCK_MEDIUM_AND_ABOVE"],),
-                "model": (["gemini-2.5-flash-image-preview"],),
+                "model": ([
+                    "gemini-2.5-flash-image-preview",
+                ],),
             },
             "optional": {
                 "api_key": ("STRING", {}),
@@ -33,9 +34,7 @@ class NanoBananaNode:
                 "reference_image_4": ("IMAGE",),
                 "reference_image_5": ("IMAGE",),
                 "system_instruction": ("STRING", {}),
-                "error_fallback_value": ("STRING", {"lazy": True}),
                 "temperature": ("FLOAT", {"default": -0.05, "min": -0.05, "max": 1, "step": 0.05}),
-                "num_predict": ("INT", {"default": 0, "min": 0, "max": 1048576, "step": 1}),
                 "seed": ("INT", {"default": seed, "min": 0, "max": 2**31, "step": 1}),
             },
         }
@@ -56,8 +55,8 @@ class NanoBananaNode:
     def check_lazy_status(
         self,
         prompt: str,
-        safety_settings: str,
         model: str,
+        safety_settings: str | None = None,
         api_key: str | None = None,
         proxy: str | None = None,
         image_to_edit: Tensor | list[Tensor] | None = None,
@@ -67,9 +66,7 @@ class NanoBananaNode:
         reference_image_4: Tensor | list[Tensor] | None = None,
         reference_image_5: Tensor | list[Tensor] | None = None,
         system_instruction: str | None = None,
-        error_fallback_value: str | None = None,
         temperature: float | None = None,
-        num_predict: int | None = None,
         **kwargs,
     ):
         self.image_output = None
@@ -77,46 +74,48 @@ class NanoBananaNode:
         output_images = []
 
         try:
-            if not system_instruction:
-                system_instruction = None
-            
+            # Подготовка клиента
+            if api_key:
+                client = genai.Client(api_key=api_key)
+            elif "GOOGLE_API_KEY" in os.environ:
+                client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+            else:
+                raise RuntimeError("API key not provided")
+
             contents = [prompt]
 
-            # Process reference images first
+            # Референсные изображения
             ref_images = [reference_image_1, reference_image_2, reference_image_3, reference_image_4, reference_image_5]
             for img in ref_images:
                 if img is not None:
                     contents.extend(images_to_pillow(img))
 
-            # Process the main image to be edited LAST
+            # Основное редактируемое изображение
             if image_to_edit is not None:
                 contents.extend(images_to_pillow(image_to_edit))
 
-            if api_key:
-                genai.configure(api_key=api_key, transport="rest")
-            elif "GOOGLE_API_KEY" in os.environ:
-                genai.configure(transport="rest")
-
-            model_instance = genai.GenerativeModel(model, safety_settings=safety_settings, system_instruction=system_instruction)
-
-            retry_config = retry.Retry(
-                predicate=retry.if_exception_type(
-                    exceptions.InternalServerError,
-                    exceptions.ResourceExhausted,
-                    exceptions.ServiceUnavailable,
-                )
-            )
-
-            generation_config = genai.GenerationConfig()
+            # Настройки генерации
+            gen_config = {}
             if temperature is not None and temperature >= 0:
-                generation_config.temperature = temperature
-            if num_predict is not None and num_predict > 0:
-                generation_config.max_output_tokens = num_predict
+                gen_config["temperature"] = temperature
+            if system_instruction:
+                gen_config["system_instruction"] = system_instruction
 
             with temporary_env_var("HTTP_PROXY", proxy), temporary_env_var("HTTPS_PROXY", proxy):
-                retry_wrapped_generate_content = retry_config(model_instance.generate_content)
-                response = retry_wrapped_generate_content(contents=contents, generation_config=generation_config)
-            
+                retry_config = retry.Retry(
+                    predicate=retry.if_exception_type(
+                        exceptions.InternalServerError,
+                        exceptions.ResourceExhausted,
+                        exceptions.ServiceUnavailable,
+                    )
+                )
+                response = retry_config(client.models.generate_content)(
+                    model=model,
+                    contents=contents,
+                    config=gen_config,
+                )
+
+            # Обработка ответа
             if not response.candidates:
                 self.status_output = "Error: Prompt or image was blocked by safety filters."
                 logging.warning(self.status_output)
@@ -134,9 +133,8 @@ class NanoBananaNode:
                 if output_images:
                     self.status_output = "Complete"
                 else:
-                    # This case happens if the response had candidates but no valid image data
                     if self.status_output.startswith("Error:"):
-                        pass # Keep the more specific error
+                        pass
                     else:
                         self.status_output = "Error: No image data in API response."
 
@@ -144,14 +142,14 @@ class NanoBananaNode:
             self.status_output = f"Error: {e}"
             logging.error(f"An exception occurred in NanoBananaNode: {e}", exc_info=True)
 
-        # Fallback to a black image if there was any issue
+        # Фолбэк: чёрное изображение
         if not output_images:
-            width, height = 512, 512 # Default size
+            width, height = 512, 512
             if image_to_edit is not None:
                 height, width = image_to_edit.shape[1], image_to_edit.shape[2]
-            black_image = Image.new('RGB', (width, height), (0, 0, 0))
+            black_image = Image.new("RGB", (width, height), (0, 0, 0))
             output_images.append(black_image)
-        
+
         self.image_output = pillow_to_tensor(output_images)
         return []
 
@@ -161,5 +159,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nano_Banana": "Nano banana",
+    "Nano_Banana": "Nano Banana",
 }
