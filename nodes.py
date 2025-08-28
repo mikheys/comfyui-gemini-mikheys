@@ -33,7 +33,7 @@ class NanoBananaNode:
                 "reference_image_3": ("IMAGE",),
                 "reference_image_4": ("IMAGE",),
                 "reference_image_5": ("IMAGE",),
-                "system_instruction": ("STRING", {}),
+#                "system_instruction": ("STRING", {}), # <-- не влияет на результат
                 "temperature": ("FLOAT", {"default": -0.05, "min": -0.05, "max": 1, "step": 0.05}),
                 "seed": ("INT", {"default": seed, "min": 0, "max": 2**31, "step": 1}),
             },
